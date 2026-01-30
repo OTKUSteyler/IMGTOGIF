@@ -102,21 +102,14 @@ export default {
             ],
             execute: async (args, ctx) => {
                 try {
-                    // Debug: Log what we receive
-                    console.log("[ImgToGif] Args received:", JSON.stringify(args, null, 2));
-                    console.log("[ImgToGif] Context:", JSON.stringify(ctx, null, 2));
-                    
                     // Extract arguments
-                    let imageAttachment: any = null;
+                    let attachmentId: any = null;
                     let width: number | undefined;
                     let height: number | undefined;
 
                     for (const arg of args) {
-                        console.log("[ImgToGif] Processing arg:", arg.name, arg);
-                        
                         if (arg.name === "image") {
-                            imageAttachment = arg.value;
-                            console.log("[ImgToGif] Found image attachment:", imageAttachment);
+                            attachmentId = arg.value;
                         } else if (arg.name === "width") {
                             width = Number(arg.value);
                         } else if (arg.name === "height") {
@@ -124,10 +117,34 @@ export default {
                         }
                     }
 
-                    if (!imageAttachment) {
+                    console.log("[ImgToGif] Attachment ID:", attachmentId);
+                    console.log("[ImgToGif] Context attachments:", ctx.attachments);
+                    
+                    // Try to find the attachment in various places
+                    let imageAttachment: any = null;
+                    
+                    // Method 1: Check ctx.attachments array
+                    if (ctx.attachments && ctx.attachments.length > 0) {
+                        imageAttachment = ctx.attachments[attachmentId] || ctx.attachments[0];
+                    }
+                    
+                    // Method 2: Check if attachments is an object/map
+                    if (!imageAttachment && ctx.attachments && typeof attachmentId === 'number') {
+                        const attachmentsArray = Object.values(ctx.attachments);
+                        imageAttachment = attachmentsArray[attachmentId];
+                    }
+                    
+                    // Method 3: Direct attachment lookup
+                    if (!imageAttachment && ctx.message?.attachments) {
+                        imageAttachment = ctx.message.attachments[0];
+                    }
+
+                    console.log("[ImgToGif] Found attachment:", imageAttachment);
+
+                    if (!imageAttachment || !imageAttachment.url) {
                         messageUtil.sendMessage(
                             ctx.channel.id,
-                            { content: "❌ No image specified! Please attach an image. Debug: " + JSON.stringify(args) },
+                            { content: `❌ No image found! Attachment ID: ${attachmentId}, Context: ${JSON.stringify(Object.keys(ctx))}` },
                             void 0,
                             { nonce: Date.now().toString() }
                         );
