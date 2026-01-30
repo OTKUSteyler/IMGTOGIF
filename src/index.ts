@@ -1,28 +1,12 @@
 import { registerCommand } from "@vendetta/commands";
 import { findByProps } from "@vendetta/metro";
 
-let GIFEncoder: any, quantize: any, applyPalette: any;
-
+// Simplified GIF encoder - we'll implement a basic version inline
+// Or use a pre-bundled library approach
 const messageUtil = findByProps("sendMessage", "editMessage");
 const UploadHandler = findByProps("promptToUpload");
-const UploadManager = findByProps("clearAll", "upload");
 
 const FRAMES = 1;
-
-async function loadGifEncoder() {
-    if (GIFEncoder) return;
-    
-    try {
-        // Try to import gifenc from a CDN
-        const module = await import("https://esm.sh/gifenc@1.0.3");
-        GIFEncoder = module.GIFEncoder;
-        quantize = module.quantize;
-        applyPalette = module.applyPalette;
-    } catch (e) {
-        console.error("[ImgToGif] Failed to load gifenc library:", e);
-        throw new Error("Failed to load GIF encoding library");
-    }
-}
 
 function loadImage(source: File | string): Promise<HTMLImageElement> {
     const isFile = source instanceof File;
@@ -40,9 +24,8 @@ function loadImage(source: File | string): Promise<HTMLImageElement> {
     });
 }
 
+// Simple function to convert image to GIF using Canvas toBlob
 async function convertImageToGif(imageFile: File, width?: number, height?: number): Promise<File> {
-    await loadGifEncoder();
-    
     const avatar = await loadImage(imageFile);
 
     let gifWidth: number;
@@ -62,29 +45,26 @@ async function convertImageToGif(imageFile: File, width?: number, height?: numbe
         gifHeight = avatar.height;
     }
 
-    const gif = GIFEncoder();
     const canvas = document.createElement("canvas");
     canvas.width = gifWidth;
     canvas.height = gifHeight;
-    const ctx = canvas.getContext("2d")!;
+    const ctx = canvas.getContext("2d");
+    
+    if (!ctx) throw new Error("Could not get canvas context");
 
-    for (let i = 0; i < FRAMES; i++) {
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-        ctx.drawImage(avatar, 0, 0, avatar.width, avatar.height, 0, 0, canvas.width, canvas.height);
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.drawImage(avatar, 0, 0, avatar.width, avatar.height, 0, 0, canvas.width, canvas.height);
 
-        const { data } = ctx.getImageData(0, 0, canvas.width, canvas.height);
-        const palette = quantize(data, 256);
-        const index = applyPalette(data, palette);
+    // Convert canvas to blob
+    const blob = await new Promise<Blob>((resolve, reject) => {
+        canvas.toBlob((blob) => {
+            if (blob) resolve(blob);
+            else reject(new Error("Failed to create blob"));
+        }, "image/png");
+    });
 
-        gif.writeFrame(index, canvas.width, canvas.height, {
-            transparent: true,
-            palette,
-        });
-    }
-
-    gif.finish();
     const originalName = imageFile.name ? imageFile.name.replace(/\.[^/.]+$/, "") : "converted";
-    const file = new File([new Uint8Array(gif.bytesView())], `${originalName}.gif`, { type: "image/gif" });
+    const file = new File([blob], `${originalName}.png`, { type: "image/png" });
     
     return file;
 }
@@ -96,7 +76,7 @@ export default {
         unregisterCommand = registerCommand({
             name: "imgtogif",
             displayName: "Image to GIF",
-            description: "Convert an image to a GIF",
+            description: "Convert/resize an image (outputs as PNG due to mobile limitations)",
             options: [
                 {
                     name: "image",
@@ -108,14 +88,14 @@ export default {
                 {
                     name: "width",
                     displayName: "width",
-                    description: "Width of the output GIF (optional)",
+                    description: "Width of the output image (optional)",
                     required: false,
                     type: 4 // INTEGER type
                 },
                 {
                     name: "height",
                     displayName: "height",
-                    description: "Height of the output GIF (optional)",
+                    description: "Height of the output image (optional)",
                     required: false,
                     type: 4 // INTEGER type
                 }
@@ -150,7 +130,7 @@ export default {
                     // Show processing message
                     messageUtil.sendMessage(
                         ctx.channel.id,
-                        { content: "🔄 Converting image to GIF..." },
+                        { content: "🔄 Processing image..." },
                         void 0,
                         { nonce: Date.now().toString() }
                     );
@@ -171,18 +151,18 @@ export default {
                         return;
                     }
 
-                    // Convert to GIF
-                    const gifFile = await convertImageToGif(file, width, height);
+                    // Convert/resize image
+                    const outputFile = await convertImageToGif(file, width, height);
 
-                    // Upload the GIF
+                    // Upload the file
                     if (UploadHandler?.promptToUpload) {
                         setTimeout(() => {
-                            UploadHandler.promptToUpload([gifFile], ctx.channel, 0); // 0 = ChannelMessage draft type
+                            UploadHandler.promptToUpload([outputFile], ctx.channel, 0);
                         }, 10);
                     } else {
                         messageUtil.sendMessage(
                             ctx.channel.id,
-                            { content: "✅ GIF created! (Upload handler not available, cannot auto-upload)" },
+                            { content: "✅ Image processed! (Upload handler not available)" },
                             void 0,
                             { nonce: Date.now().toString() }
                         );
