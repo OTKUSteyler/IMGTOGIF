@@ -102,14 +102,21 @@ export default {
             ],
             execute: async (args, ctx) => {
                 try {
+                    // Debug: Log what we receive
+                    console.log("[ImgToGif] Args received:", JSON.stringify(args, null, 2));
+                    console.log("[ImgToGif] Context:", JSON.stringify(ctx, null, 2));
+                    
                     // Extract arguments
                     let imageAttachment: any = null;
                     let width: number | undefined;
                     let height: number | undefined;
 
                     for (const arg of args) {
+                        console.log("[ImgToGif] Processing arg:", arg.name, arg);
+                        
                         if (arg.name === "image") {
                             imageAttachment = arg.value;
+                            console.log("[ImgToGif] Found image attachment:", imageAttachment);
                         } else if (arg.name === "width") {
                             width = Number(arg.value);
                         } else if (arg.name === "height") {
@@ -120,7 +127,7 @@ export default {
                     if (!imageAttachment) {
                         messageUtil.sendMessage(
                             ctx.channel.id,
-                            { content: "❌ No image specified! Please attach an image." },
+                            { content: "❌ No image specified! Please attach an image. Debug: " + JSON.stringify(args) },
                             void 0,
                             { nonce: Date.now().toString() }
                         );
